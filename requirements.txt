@@ -1,9 +1,8 @@
 fastapi
 uvicorn
-torch
-torchvision
-transformers
-pillow
+torch==2.1.0+cpu
+torchvision==0.16.0+cpu
 numpy
 opencv-python
+pillow
 python-multipart

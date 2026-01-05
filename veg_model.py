@@ -6,7 +6,7 @@ from transformers import SegformerForSemanticSegmentation
 from torchvision import transforms
 
 BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "models" / "segformer_veg.pth"
+MODEL_PATH = BASE_DIR / "models" / "veg_unet_lite.pth"
 
 class VegetationModel:
     def __init__(self):
