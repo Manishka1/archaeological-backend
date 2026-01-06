@@ -106,3 +106,19 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("app:app", host="0.0.0.0", port=port)
+
+
+
+@app.on_event("startup")
+def warmup_models():
+    import numpy as np
+    import cv2
+
+    # Dummy black image
+    dummy = np.zeros((256, 256, 3), dtype=np.uint8)
+
+    try:
+        veg_model.predict(dummy)
+        print("✅ Vegetation model warmed up")
+    except Exception as e:
+        print("⚠️ Warmup failed:", e)
