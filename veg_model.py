@@ -8,25 +8,23 @@ from PIL import Image
 from torchvision import transforms
 
 # -------------------------------------------------
-# PATH SETUP
+# PATH
 # -------------------------------------------------
-
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "models" / "veg_unet_lite.pth"
 
 # -------------------------------------------------
-# UNET-LITE ARCHITECTURE
+# UNET-LITE (MATCHES TRAINING NAMES)
 # -------------------------------------------------
-
 class DoubleConv(nn.Module):
-    def __init__(self, in_ch, out_ch):
+    def __init__(self, i, o):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_ch),
+            nn.Conv2d(i, o, 3, 1, 1),
+            nn.BatchNorm2d(o),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-            nn.BatchNorm2d(out_ch),
+            nn.Conv2d(o, o, 3, 1, 1),
+            nn.BatchNorm2d(o),
             nn.ReLU(inplace=True),
         )
 
@@ -37,36 +35,35 @@ class DoubleConv(nn.Module):
 class UNetLite(nn.Module):
     def __init__(self):
         super().__init__()
-
-        self.down1 = DoubleConv(3, 32)
-        self.down2 = DoubleConv(32, 64)
-        self.down3 = DoubleConv(64, 128)
+        self.d1 = DoubleConv(3, 32)
+        self.d2 = DoubleConv(32, 64)
+        self.d3 = DoubleConv(64, 128)
 
         self.pool = nn.MaxPool2d(2)
 
-        self.bridge = DoubleConv(128, 256)
+        self.b = DoubleConv(128, 256)
 
-        self.up3 = DoubleConv(256 + 128, 128)
-        self.up2 = DoubleConv(128 + 64, 64)
-        self.up1 = DoubleConv(64 + 32, 32)
+        self.u3 = DoubleConv(256 + 128, 128)
+        self.u2 = DoubleConv(128 + 64, 64)
+        self.u1 = DoubleConv(64 + 32, 32)
 
-        self.out = nn.Conv2d(32, 1, kernel_size=1)
+        self.out = nn.Conv2d(32, 1, 1)
 
     def forward(self, x):
-        d1 = self.down1(x)
-        d2 = self.down2(self.pool(d1))
-        d3 = self.down3(self.pool(d2))
+        d1 = self.d1(x)
+        d2 = self.d2(self.pool(d1))
+        d3 = self.d3(self.pool(d2))
 
-        b = self.bridge(self.pool(d3))
+        b = self.b(self.pool(d3))
 
         x = F.interpolate(b, scale_factor=2, mode="bilinear", align_corners=False)
-        x = self.up3(torch.cat([x, d3], dim=1))
+        x = self.u3(torch.cat([x, d3], dim=1))
 
         x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
-        x = self.up2(torch.cat([x, d2], dim=1))
+        x = self.u2(torch.cat([x, d2], dim=1))
 
         x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
-        x = self.up1(torch.cat([x, d1], dim=1))
+        x = self.u1(torch.cat([x, d1], dim=1))
 
         return torch.sigmoid(self.out(x))
 
@@ -74,12 +71,12 @@ class UNetLite(nn.Module):
 # -------------------------------------------------
 # VEGETATION MODEL WRAPPER
 # -------------------------------------------------
-
 class VegetationModel:
     def __init__(self):
-        self.device = "cpu"  # ✅ FORCE CPU FOR RENDER
-
+        self.device = "cpu"  # ✅ Render-safe
         self.model = UNetLite().to(self.device)
+
+        # ✅ NOW KEYS MATCH — THIS WILL LOAD
         self.model.load_state_dict(
             torch.load(MODEL_PATH, map_location=self.device)
         )
@@ -91,21 +88,13 @@ class VegetationModel:
         ])
 
     def predict(self, image_bgr: np.ndarray):
-        """
-        image_bgr: OpenCV image (BGR)
-        returns: vegetation_percent, non_vegetation_percent
-        """
-
-        # Convert BGR -> RGB -> PIL
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         image_pil = Image.fromarray(image_rgb)
 
-        # Preprocess
         x = self.transform(image_pil).unsqueeze(0).to(self.device)
 
-        # Inference
         with torch.no_grad():
-            mask = (self.model(x) > 0.5).float().squeeze().cpu().numpy()
+            mask = (self.model(x) > 0.5).float().squeeze().numpy()
 
         veg_pixels = np.sum(mask == 1)
         total_pixels = mask.size
